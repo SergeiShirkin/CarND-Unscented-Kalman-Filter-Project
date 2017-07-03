@@ -18,6 +18,11 @@ UKF::UKF() {
   use_radar_ = true;
 
 
+  NIS_radar_ = 0;
+
+  NIS_laser_ = 0;
+
+
   n_x_ = 5;
 
   n_aug_ = 7;
@@ -27,15 +32,13 @@ UKF::UKF() {
   x_ = VectorXd(n_x_);
 
   // initial covariance matrix
-  P_ = Identity(n_x_, n_x_);
-
-  cout << "Matrix P:\n\n" << P_ << endl;
+  P_ = MatrixXd::Identity(n_x_, n_x_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
   std_a_ = 9;  // PARAMETER FOR TUNUNG
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 3;  .//PARAMETER FOR TUNUNG
+  std_yawdd_ = 3;  //PARAMETER FOR TUNUNG
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -65,12 +68,13 @@ UKF::UKF() {
 
   lambda_ = 3 - n_x_;
 
-  weights_ = = VectorXd(2*n_aug_+1);
+  weights_ = VectorXd(2*n_aug_+1);
+
+  prev_timestamp_ = 0;
 
 }
 
 UKF::~UKF() {}
-
 /**
  * @param {MeasurementPackage} meas_package The latest measurement data of
  * either radar or laser.
@@ -172,8 +176,8 @@ void UKF::Prediction(double delta_t)
 
   x_aug.head(5) = x_;
 
-  x_aug(n_x_) = 0;
-  x_aug(n_x_ + 1) = 0;
+  x_aug(5) = 0;
+  x_aug(6) = 0;
 
 
   MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
@@ -215,13 +219,13 @@ void UKF::Prediction(double delta_t)
       double yaw_p = yaw + yawd * delta_t;
       double yawd_p = yawd;
       
-      px_p = px_p + 0.5 * nu_a * pow(delta_t, 2) * cos(yaw);
-      py_p = py_p + 0.5 * nu_a * pow(delta_t, 2) * sin(yaw);
-      v_p = v_p + nu_a * delta_t;
+      px_p += 0.5 * nu_a * pow(delta_t, 2) * cos(yaw);
+      py_p += 0.5 * nu_a * pow(delta_t, 2) * sin(yaw);
+      v_p += nu_a * delta_t;
 
 
-      yaw_p = yaw_p + 0.5 * pow(delta_t, 2) * nu_yawdd;
-      yawd_p = yawd_p + delta_t * nu_yawdd;
+      yaw_p += 0.5 * pow(delta_t, 2) * nu_yawdd;
+      yawd_p += delta_t * nu_yawdd;
       
       Xsig_pred_(0,i) = px_p;
       Xsig_pred_(1,i) = py_p;
@@ -236,7 +240,7 @@ void UKF::Prediction(double delta_t)
   x_.fill(0.0);
   for(int i = 0; i < 2 * n_aug_ + 1; i++) 
   {
-    x_ = x_ + weights_(i) * Xsig_pred_.col(i);
+    x_ += weights_(i) * Xsig_pred_.col(i);
   }
 
   P_.fill(0.0);
@@ -254,7 +258,7 @@ void UKF::Prediction(double delta_t)
       x_diff(3) += 2.0 * M_PI;
     }
 
-    P_ = P_ + weights_(i) * x_diff * x_diff.transpose();
+    P_ += weights_(i) * x_diff * x_diff.transpose();
   }
 
 }
@@ -366,7 +370,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
     z_diff(1) += 2.0 * M_PI;
   }
 
-  NIS_laser_ = NIS(z_diff, S);
+  NIS_laser_ = (z_diff.transpose() * S.inverse() * z_diff).value();
 
   x_ = x_ + K * z_diff;
   MatrixXd Kt = K.transpose();
@@ -502,7 +506,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
     z_diff(1) += 2.0 * M_PI;
   }
 
-  NIS_radar_ = NIS(z_diff, S);
+  NIS_radar_ = (z_diff.transpose() * S.inverse() * z_diff).value();
 
   
   x_ = x_ + K * z_diff;
