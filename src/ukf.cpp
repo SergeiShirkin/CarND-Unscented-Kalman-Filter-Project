@@ -10,7 +10,8 @@ using std::vector;
 /**
  * Initializes Unscented Kalman filter
  */
-UKF::UKF() {
+UKF::UKF() 
+{
   // if this is false, laser measurements will be ignored (except during init)
   use_laser_ = true;
 
@@ -35,10 +36,10 @@ UKF::UKF() {
   P_ = MatrixXd::Identity(n_x_, n_x_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 9;  // PARAMETER FOR TUNUNG
+  std_a_ = 0.8;  // PARAMETER FOR TUNUNG
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 3;  //PARAMETER FOR TUNUNG
+  std_yawdd_ = 0.8;  //PARAMETER FOR TUNUNG
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -62,19 +63,33 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
-
+  delta_t = 0;
 
   is_initialized_ = false;
 
   lambda_ = 3 - n_x_;
-
-  weights_ = VectorXd(2*n_aug_+1);
 
   prev_timestamp_ = 0;
 
 }
 
 UKF::~UKF() {}
+
+void UKF::NormalizeAngle(double &angle)
+{
+
+   while(angle > M_PI)
+  {
+    angle -= 2.0 * M_PI;
+  }
+  while(angle < -M_PI)
+  {
+    angle += 2.0 * M_PI;
+  }
+
+  return;
+}
+
 /**
  * @param {MeasurementPackage} meas_package The latest measurement data of
  * either radar or laser.
@@ -87,13 +102,13 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
   Complete this function! Make sure you switch between lidar and radar
   measurements.
   */
-  double m0 = meas_package.raw_measurements_(0);
-  double m1 = meas_package.raw_measurements_(1);
+
 
   if(!is_initialized_) 
   {
 
-
+    double m0 = meas_package.raw_measurements_(0);
+    double m1 = meas_package.raw_measurements_(1);
     // Initialisation
 
     if(meas_package.sensor_type_ == MeasurementPackage::LASER) 
@@ -114,7 +129,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 
     // Prediction
 
-    long delta_t = (meas_package.timestamp_ - prev_timestamp_) / 1000000.0;
+    delta_t = (meas_package.timestamp_ - prev_timestamp_) / 1000000.0;
     prev_timestamp_ = meas_package.timestamp_;
 
     Prediction(delta_t);
@@ -190,6 +205,8 @@ void UKF::Prediction(double delta_t)
   }
 
   
+  Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
+
   for (int i = 0; i < 2 * n_aug_ + 1; i++)
   {
 
@@ -234,36 +251,42 @@ void UKF::Prediction(double delta_t)
       Xsig_pred_(4,i) = yawd_p;
 
       }
+
+  weights_ = VectorXd(2 * n_aug_ + 1);
+
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) 
+  {  
+    if(i == 0)
+    {
+      weights_(i) = 1.0 * lambda_ / (lambda_+n_aug_);
+    }
+    else
+    {
+      weights_(i) = 0.5 / (n_aug_ + lambda_);
+    }
+  }
   
 
-
   x_.fill(0.0);
+
   for(int i = 0; i < 2 * n_aug_ + 1; i++) 
   {
     x_ += weights_(i) * Xsig_pred_.col(i);
   }
 
   P_.fill(0.0);
+
   for(int i = 0; i < 2 * n_aug_ + 1; i++) 
   {
     
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
 
-    while(x_diff(3) > M_PI)
-    {
-      x_diff(3) -= 2.0 * M_PI;
-    }
-    while(x_diff(3) < -M_PI) 
-    {
-      x_diff(3) += 2.0 * M_PI;
-    }
+    NormalizeAngle(x_diff(3));
 
     P_ += weights_(i) * x_diff * x_diff.transpose();
   }
 
 }
-
-
 
 
 
@@ -296,7 +319,9 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
       Zsig(1,i) = Xsig_pred_(1,i);
   }
 
+
   z_pred.fill(0.0);
+
   for (int i=0; i < 2 * n_aug_+1; i++) 
   {
       z_pred = z_pred + weights_(i) * Zsig.col(i);
@@ -304,54 +329,38 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
 
 
   S.fill(0.0);
+
   for(int i = 0; i < 2 * n_aug_ + 1; i++) 
   {
     VectorXd z_diff = Zsig.col(i) - z_pred;
 
-    while(z_diff(1) > M_PI)
-    {
-    z_diff(1) -= 2.0 * M_PI;
-    }
-    while(z_diff(1) < -M_PI)
-    {
-      z_diff(1) += 2.0 * M_PI;
-    }
+    NormalizeAngle(z_diff(1));
 
     S = S + weights_(i) * z_diff * z_diff.transpose();
   }
 
   
   MatrixXd R = MatrixXd(n_z,n_z);
+
   R << pow(std_laspx_, 2), 0,
        0, pow(std_laspy_, 2);
+
   S = S + R;
 
   MatrixXd Tc = MatrixXd(n_x_, n_z);
+
   Tc.fill(0.0);
+
   for (int i = 0; i < 2 * n_aug_ + 1; i++) 
   {
 
     VectorXd z_diff = Zsig.col(i) - z_pred;
 
-    while(z_diff(1) > M_PI)
-    {
-      z_diff(1) -= 2.0 * M_PI;
-    }
-    while(z_diff(1) < -M_PI)
-    {
-      z_diff(1) += 2.0 * M_PI;
-    }
+    NormalizeAngle(z_diff(1));
 
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
 
-    while(x_diff(3) > M_PI)
-    {
-      x_diff(3) -= 2.0 * M_PI;
-    }
-    while(x_diff(3) < -M_PI)
-    {
-      x_diff(3) += 2.0 * M_PI;
-    }
+    NormalizeAngle(x_diff(3));
 
     Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
   }
@@ -361,29 +370,17 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
   VectorXd z = meas_package.raw_measurements_;
   VectorXd z_diff = z - z_pred;
 
-  while(z_diff(1) > M_PI)
-  {
-    z_diff(1) -= 2.0 * M_PI;
-  }
-  while(z_diff(1) < -M_PI)
-  {
-    z_diff(1) += 2.0 * M_PI;
-  }
+  NormalizeAngle(z_diff(1));
 
   NIS_laser_ = (z_diff.transpose() * S.inverse() * z_diff).value();
 
   x_ = x_ + K * z_diff;
+
   MatrixXd Kt = K.transpose();
+
   P_ = P_ - K * S * Kt;
 
-  while (x_(3) > M_PI)
-  {
-    x_(3) -= 2.0 * M_PI;
-  }
-  while (x_(3) <- M_PI)
-  {
-    x_(3)+=2.0 * M_PI;
-  }
+  NormalizeAngle(x_(3));
 
 }
 
@@ -441,14 +438,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
 
     VectorXd z_diff = Zsig.col(i) - z_pred;
 
-    while(z_diff(1) > M_PI)
-    {
-      z_diff(1) -= 2.0 * M_PI;
-    }
-    while(z_diff(1) < -M_PI)
-    {
-      z_diff(1) += 2.0 * M_PI;
-    }
+    NormalizeAngle(z_diff(1));
 
     S += weights_(i) * z_diff * z_diff.transpose();
   }
@@ -469,26 +459,13 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
 
     VectorXd z_diff = Zsig.col(i) - z_pred;
 
-    while(z_diff(1) > M_PI)
-    {
-      z_diff(1) -= 2.0 * M_PI;
-    }
-    while(z_diff(1) < -M_PI)
-    {
-      z_diff(1) += 2.0 * M_PI;
-    }
+    NormalizeAngle(z_diff(1));
 
 
     VectorXd x_diff = Xsig_pred_.col(i) - x_;
   
-    while(x_diff(3) > M_PI)
-    {
-      x_diff(3) -= 2.0 * M_PI;
-    }
-    while(x_diff(3) <- M_PI)
-    {
-      x_diff(3) += 2.0 * M_PI;
-    }
+    NormalizeAngle(x_diff(3));
+
 
     Tc += weights_(i) * x_diff * z_diff.transpose();
   }
@@ -497,14 +474,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
   VectorXd z = meas_package.raw_measurements_;
   VectorXd z_diff = z - z_pred;
 
-  while(z_diff(1) > M_PI)
-  {
-    z_diff(1) -= 2.0 * M_PI;
-  }
-  while(z_diff(1) <- M_PI)
-  {
-    z_diff(1) += 2.0 * M_PI;
-  }
+  NormalizeAngle(z_diff(1));
+
 
   NIS_radar_ = (z_diff.transpose() * S.inverse() * z_diff).value();
 
@@ -514,12 +485,5 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
   MatrixXd Kt = K.transpose();
   P_ -= K * S * Kt;
 
-  while(x_(3) > M_PI)
-  {
-    x_(3) -= 2.0 * M_PI;
-  }
-  while(x_(3) < -M_PI)
-  {
-    x_(3) += 2.0 * M_PI;
-  }
+  NormalizeAngle(x_(3));
 }

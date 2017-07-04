@@ -23,7 +23,7 @@ VectorXd Tools::CalculateRMSE(const vector<VectorXd> &estimations,
   if((estimations.size() == ground_truth.size()) 
   	                  && (estimations.size() != 0))
   {
-    for(int i=0; i < estimations.size(); ++i)
+    for(int i = 0; i < estimations.size(); i++)
     {
     VectorXd residual = estimations[i] - ground_truth[i];
     residual = pow(residual.array(), 2);

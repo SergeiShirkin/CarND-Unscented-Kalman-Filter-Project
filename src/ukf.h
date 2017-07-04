@@ -10,7 +10,8 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
-class UKF {
+class UKF 
+{
 public:
 
   ///* initially set to false, set to true in first call of ProcessMeasurement
@@ -75,6 +76,9 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
+  // delta t
+  double delta_t;
+
 
   /**
    * Constructor
@@ -110,6 +114,9 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+  
+  /*Normalize angle*/
+  void NormalizeAngle(double &angle);
 };
 
 #endif /* UKF_H */
